@@ -1,0 +1,98 @@
+version: '3.8'
+
+services:
+  db:
+    image: mariadb:10.11
+    container_name: notik_db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-notik_root_pass_change_me}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-notik}
+      MYSQL_USER: ${MYSQL_USER:-notik}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-notik_pass_change_me}
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./docker/mysql/init:/docker-entrypoint-initdb.d
+    networks:
+      - notik_network
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  wordpress:
+    image: wordpress:6.7-php8.2-apache
+    container_name: notik_wordpress
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${WP_PORT:-8080}:80"
+    environment:
+      WORDPRESS_DB_HOST: db:3306
+      WORDPRESS_DB_USER: ${MYSQL_USER:-notik}
+      WORDPRESS_DB_PASSWORD: ${MYSQL_PASSWORD:-notik_pass_change_me}
+      WORDPRESS_DB_NAME: ${MYSQL_DATABASE:-notik}
+      WORDPRESS_DEBUG: ${WORDPRESS_DEBUG:-1}
+      WORDPRESS_CONFIG_EXTRA: |
+        define('WP_MEMORY_LIMIT', '256M');
+        define('WP_MAX_MEMORY_LIMIT', '512M');
+        define('FS_METHOD', 'direct');
+        define('DISALLOW_FILE_EDIT', true);
+        define('AUTOMATIC_UPDATER_DISABLED', true);
+    volumes:
+      - wp_data:/var/www/html
+      - ./wordpress/wp-content/themes/notik:/var/www/html/wp-content/themes/notik
+      - ./wordpress/wp-content/plugins/notik-core:/var/www/html/wp-content/plugins/notik-core
+      - ./docker/php/uploads.ini:/usr/local/etc/php/conf.d/uploads.ini
+      - ./data/private-files:/var/www/html/wp-content/uploads/woocommerce_uploads
+    networks:
+      - notik_network
+
+  wpcli:
+    image: wordpress:cli-php8.2
+    container_name: notik_wpcli
+    user: "33:33"
+    depends_on:
+      - wordpress
+      - db
+    environment:
+      WORDPRESS_DB_HOST: db:3306
+      WORDPRESS_DB_USER: ${MYSQL_USER:-notik}
+      WORDPRESS_DB_PASSWORD: ${MYSQL_PASSWORD:-notik_pass_change_me}
+      WORDPRESS_DB_NAME: ${MYSQL_DATABASE:-notik}
+    volumes:
+      - wp_data:/var/www/html
+      - ./wordpress/wp-content/themes/notik:/var/www/html/wp-content/themes/notik
+      - ./wordpress/wp-content/plugins/notik-core:/var/www/html/wp-content/plugins/notik-core
+    networks:
+      - notik_network
+    profiles:
+      - cli
+
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: notik_phpmyadmin
+    restart: unless-stopped
+    depends_on:
+      - db
+    ports:
+      - "${PMA_PORT:-8081}:80"
+    environment:
+      PMA_HOST: db
+      PMA_USER: root
+      PMA_PASSWORD: ${MYSQL_ROOT_PASSWORD:-notik_root_pass_change_me}
+    networks:
+      - notik_network
+    profiles:
+      - tools
+
+volumes:
+  db_data:
+  wp_data:
+
+networks:
+  notik_network:
+    driver: bridge

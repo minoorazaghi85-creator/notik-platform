@@ -1,0 +1,2 @@
+# Place this as .htaccess inside woocommerce_uploads on production
+deny from all

@@ -1,0 +1,7 @@
+.env
+data/private-files/*
+!data/private-files/.gitkeep
+*.log
+.DS_Store
+node_modules/
+vendor/
